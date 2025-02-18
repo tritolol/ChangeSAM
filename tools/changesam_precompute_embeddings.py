@@ -84,6 +84,8 @@ def main():
     args = parse_args()
     download_checkpoint_if_needed(args.checkpoint)
 
+    torch.multiprocessing.set_start_method('spawn')
+
     # Gather all .png images recursively under dataset_root/images.
     images_dir = os.path.join(args.dataset_root, "images")
     image_pattern = os.path.join(images_dir, "**", "*.png")

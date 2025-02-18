@@ -327,14 +327,18 @@ class ImageEncoderViTLoRA(nn.Module):
             )
 
         self.blocks = nn.ModuleList()
+        # Normalize lora_layers: convert negative indices to positive ones.
+        if lora_layers is not None:
+            normalized_lora_layers = set(idx if idx >= 0 else idx + depth for idx in lora_layers)
+        else:
+            normalized_lora_layers = set()
+
         for i in range(depth):
             # Determine if LoRA should be applied for this block.
-            if lora_layers is not None and i in lora_layers:
+            if i in normalized_lora_layers:
                 block_lora_r = lora_r
-                block_lora_alpha = lora_alpha
             else:
                 block_lora_r = 0
-                block_lora_alpha = lora_alpha  # Not used if r==0
 
             block = Block(
                 dim=embed_dim,
@@ -348,7 +352,7 @@ class ImageEncoderViTLoRA(nn.Module):
                 window_size=window_size if i not in global_attn_indexes else 0,
                 input_size=(img_size // patch_size, img_size // patch_size),
                 lora_r=block_lora_r,
-                lora_alpha=block_lora_alpha,
+                lora_alpha=lora_alpha,
             )
             self.blocks.append(block)
 

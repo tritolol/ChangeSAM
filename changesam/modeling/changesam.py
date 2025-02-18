@@ -1,4 +1,4 @@
-from typing import Any, Dict, Union, List
+from typing import Any, Dict, Union, List, Tuple
 import torch
 from torch import nn
 from segment_anything.modeling import ImageEncoderViT, PromptEncoder
@@ -24,6 +24,7 @@ class ChangeSam(nn.Module):
         prompt_encoder: PromptEncoder,
         mask_decoder: Union[ChangeDecoderPreDF, ChangeDecoderPostDF],
         num_sparse_prompts: int = 4,
+        original_image_size: Tuple[int, int] = (768, 1024)
     ) -> None:
         """
         Initializes the ChangeSam model.
@@ -41,6 +42,7 @@ class ChangeSam(nn.Module):
         self.prompt_encoder = prompt_encoder
         self.mask_decoder = mask_decoder
         self.num_sparse_prompts = num_sparse_prompts
+        self.original_image_size = original_image_size
 
         # Initialize learnable sparse prompt embeddings.
         # To mimic the original prompt encoder behavior, we simulate a centered point prompt.
@@ -94,7 +96,10 @@ class ChangeSam(nn.Module):
             image_pe=dense_embeddings,
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
-        )
+        ).unsqueeze(1)
+
+        mask = self.postprocess_masks(mask).squeeze(1)
+
         return mask
     
     def forward_with_images(self, batched_input: Dict[str, Any]) -> torch.Tensor:
@@ -123,3 +128,32 @@ class ChangeSam(nn.Module):
         }
         # Call the fixed-prompt forward method.
         return self(new_batched_input)
+
+    def postprocess_masks(
+        self,
+        masks: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Remove padding and upscale masks to the original image size.
+
+        Arguments:
+          masks (torch.Tensor): Batched masks from the mask_decoder,
+            in BxCxHxW format.
+          input_size (tuple(int, int)): The size of the image input to the
+            model, in (H, W) format. Used to remove padding.
+          original_size (tuple(int, int)): The original size of the image
+            before resizing for input to the model, in (H, W) format.
+
+        Returns:
+          (torch.Tensor): Batched masks in BxCxHxW format, where (H, W)
+            is given by original_size.
+        """
+        masks = F.interpolate(
+            masks,
+            (self.image_encoder.img_size, self.image_encoder.img_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        masks = masks[..., : self.original_image_size[0], : self.original_image_size[1]]
+        #masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
+        return masks
