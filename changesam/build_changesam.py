@@ -10,12 +10,12 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import torch
 
 from segment_anything.modeling import (
-    ImageEncoderViT,
     PromptEncoder,
     TwoWayTransformer,
 )
 from changesam.modeling.changesam import ChangeSam
 from changesam.modeling.image_encoder_vit_lora import ImageEncoderViTLoRA
+from changesam.modeling.tiny_vit_lora import TinyViTLoRA
 from changesam.modeling.change_decoder_pre_df import ChangeDecoderPreDF
 from changesam.modeling.change_decoder_post_df import ChangeDecoderPostDF
 
@@ -24,8 +24,14 @@ EXPECTED_SAM_VIT_H_CHECKPOINT_HASH = (
     "a7bf3b02f3ebf1267aba913ff637d9a2d5c33d3173bb679e46d9f338c26f262e"
 )
 
+EXPECTED_MOBILESAM_VIT_TCHECKPOINT_HASH = (
+    "6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f"
+)
 
-def load_and_verify_checkpoint(filepath: str, expected_hash: str, hash_algo: str = "sha256") -> Any:
+
+def load_and_verify_checkpoint(
+    filepath: str, expected_hash: str, hash_algo: str = "sha256"
+) -> Any:
     """
     Loads the checkpoint file into memory, computes its hash, verifies it,
     and then loads the checkpoint as a torch state dict.
@@ -55,39 +61,64 @@ def load_and_verify_checkpoint(filepath: str, expected_hash: str, hash_algo: str
     return checkpoint
 
 
-def _build_changesam_common(
-    mask_decoder_builder: Callable[[], Union[ChangeDecoderPreDF, ChangeDecoderPostDF]],
-    encoder_embed_dim: int,
-    encoder_depth: int,
-    encoder_num_heads: int,
-    encoder_global_attn_indexes: List[int],
-    sam_state_dict: Optional[Any] = None,
+def _build_image_encoder_sam_vit_h_lora(
     lora_layers: List[int] | None = None,
     lora_r: int = 0,
-    lora_alpha: float = 1
-) -> ChangeSam:
-    prompt_embed_dim = 256
-    image_size = 1024
-    vit_patch_size = 16
-    image_embedding_size = image_size // vit_patch_size
-
-    image_encoder = ImageEncoderViTLoRA(
-        depth=encoder_depth,
-        embed_dim=encoder_embed_dim,
-        img_size=image_size,
+    lora_alpha: float = 1,
+) -> ImageEncoderViTLoRA:
+    return ImageEncoderViTLoRA(
+        depth=32,
+        embed_dim=1280,
+        img_size=1024,
         mlp_ratio=4,
         norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
-        num_heads=encoder_num_heads,
-        patch_size=vit_patch_size,
+        num_heads=16,
+        patch_size=16,
         qkv_bias=True,
         use_rel_pos=True,
-        global_attn_indexes=encoder_global_attn_indexes,
+        global_attn_indexes=[7, 15, 23, 31],
         window_size=14,
-        out_chans=prompt_embed_dim,
-        lora_layers = lora_layers,
-        lora_r = lora_r,
-        lora_alpha = lora_alpha
+        out_chans=256,
+        lora_layers=lora_layers,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
     )
+
+
+def _build_image_encoder_mobile_sam_vit_t_lora(
+    lora_layers: List[int] | None = None,
+    lora_r: int = 0,
+    lora_alpha: float = 1,
+) -> TinyViTLoRA:
+    return TinyViTLoRA(
+        img_size=1024,
+        in_chans=3,
+        num_classes=1000,
+        embed_dims=[64, 128, 160, 320],
+        depths=[2, 2, 6, 2],
+        num_heads=[2, 4, 5, 10],
+        window_sizes=[7, 7, 14, 7],
+        mlp_ratio=4.0,
+        drop_rate=0.0,
+        drop_path_rate=0.0,
+        use_checkpoint=False,
+        mbconv_expand_ratio=4.0,
+        local_conv_size=3,
+        layer_lr_decay=0.8,
+        lora_layers=lora_layers,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+    )
+
+
+def _build_changesam_common(
+    mask_decoder_builder: Callable[[], Union[ChangeDecoderPreDF, ChangeDecoderPostDF]],
+    image_encoder: Union[ImageEncoderViTLoRA, TinyViTLoRA],
+    image_embedding_size: int,
+    image_size: int,
+    prompt_embed_dim: int,
+    sam_state_dict: Optional[Any] = None,
+) -> ChangeSam:
 
     prompt_encoder = PromptEncoder(
         embed_dim=prompt_embed_dim,
@@ -105,39 +136,77 @@ def _build_changesam_common(
     )
 
     if sam_state_dict is not None:
-        missing_keys, unexpected_keys = changesam.load_state_dict(sam_state_dict, strict=False)
+        missing_keys, unexpected_keys = changesam.load_state_dict(
+            sam_state_dict, strict=False
+        )
         # Allow missing keys for fusion layer and sparse prompt embeddings.
         expected_missing = [
-            x.startswith("mask_decoder.fusion_layer") or 
-            x.startswith("sparse_prompt_embeddings") or
-            "lora" in x
+            x.startswith("mask_decoder.fusion_layer")
+            or x.startswith("sparse_prompt_embeddings")
+            or "lora_" in x
             for x in missing_keys
         ]
         if not all(expected_missing) or unexpected_keys:
             raise ValueError("SAM state dict doesn't contain the expected keys")
+        
+        changesam.freeze_except(missing_keys)
+
     return changesam
 
 
-def build_changesam_predf_from_sam_vit_h_checkpoint(
-    sam_checkpoint: str, 
-    changesam_mask_decoder_checkpoint: Optional[str] = None,
+def build_changesam(
+    sam_checkpoint: str,
+    encoder_type: str = "sam_vit_h",  # Options: "sam_vit_h" or "mobile_sam_vit_t"
+    decoder_type: str = "predf",       # Options: "predf" or "postdf"
     lora_layers: List[int] | None = None,
     lora_r: int = 0,
-    lora_alpha: float = 1
+    lora_alpha: float = 1,
 ) -> ChangeSam:
     """
-    Builds a pre-DF ChangeSam model from a SAM ViT-H checkpoint.
-    
+    Builds a ChangeSam model with selectable image encoder and mask decoder modules.
+
     Args:
         sam_checkpoint (str): Path to the SAM ViT-H checkpoint.
-        changesam_mask_decoder_checkpoint (str, optional): Path to a checkpoint for the mask decoder.
-    
+        encoder_type (str): Which image encoder to use. Either "sam_vit_h" (for ImageEncoderViTLoRA)
+            or "mobile_sam_vit_t" (for TinyViTLoRA).
+        decoder_type (str): Which mask decoder to use. Either "predf" (for ChangeDecoderPreDF)
+            or "postdf" (for ChangeDecoderPostDF).
+        lora_layers (List[int] | None): List of block indices to apply LoRA adaptation.
+        lora_r (int): LoRA rank.
+        lora_alpha (float): LoRA scaling factor.
+
     Returns:
         ChangeSam: The constructed ChangeSam model.
     """
-    sam_state_dict = load_and_verify_checkpoint(sam_checkpoint, EXPECTED_SAM_VIT_H_CHECKPOINT_HASH)
-    changesam = _build_changesam_common(
-        mask_decoder_builder=lambda: ChangeDecoderPreDF(
+
+    # Select the image encoder
+    if encoder_type == "sam_vit_h":
+        # Load and verify the SAM checkpoint
+        sam_state_dict = load_and_verify_checkpoint(
+            sam_checkpoint, EXPECTED_SAM_VIT_H_CHECKPOINT_HASH
+        )
+        image_encoder = _build_image_encoder_sam_vit_h_lora(
+            lora_layers=lora_layers, lora_r=lora_r, lora_alpha=lora_alpha
+        )
+    elif encoder_type == "mobile_sam_vit_t":
+        # Load and verify the SAM checkpoint
+        sam_state_dict = load_and_verify_checkpoint(
+            sam_checkpoint, EXPECTED_MOBILESAM_VIT_TCHECKPOINT_HASH
+        )
+        image_encoder = _build_image_encoder_mobile_sam_vit_t_lora(
+            lora_layers=lora_layers, lora_r=lora_r, lora_alpha=lora_alpha
+        )
+    else:
+        raise ValueError(f"Unsupported encoder_type: {encoder_type}")
+
+    # Common configuration parameters
+    image_size = 1024
+    image_embedding_size = 64
+    prompt_embed_dim = 256
+
+    # Select the mask decoder builder
+    if decoder_type == "predf":
+        mask_decoder_builder = lambda: ChangeDecoderPreDF(
             num_multimask_outputs=3,
             transformer=TwoWayTransformer(
                 depth=2,
@@ -148,44 +217,9 @@ def build_changesam_predf_from_sam_vit_h_checkpoint(
             transformer_dim=256,
             iou_head_depth=3,
             iou_head_hidden_dim=256,
-        ),
-        encoder_embed_dim=1280,
-        encoder_depth=32,
-        encoder_num_heads=16,
-        encoder_global_attn_indexes=[7, 15, 23, 31],
-        sam_state_dict=sam_state_dict,
-        lora_layers=lora_layers,
-        lora_r=lora_r,
-        lora_alpha=lora_alpha
-    )
-    if changesam_mask_decoder_checkpoint is not None:
-        state_dict = torch.load(changesam_mask_decoder_checkpoint)
-        changesam.mask_decoder.load_state_dict(state_dict)
-    else:
-        print("Returning ChangeSAM with uninitialized fusion layer!")
-    return changesam
-
-
-def build_changesam_postdf_from_sam_vit_h_checkpoint(
-    sam_checkpoint: str, 
-    changesam_mask_decoder_checkpoint: Optional[str] = None,
-    lora_layers: List[int] | None = None,
-    lora_r: int = 0,
-    lora_alpha: float = 1
-) -> ChangeSam:
-    """
-    Builds a post-DF ChangeSam model from a SAM ViT-H checkpoint.
-    
-    Args:
-        sam_checkpoint (str): Path to the SAM ViT-H checkpoint.
-        changesam_mask_decoder_checkpoint (str, optional): Path to a checkpoint for the mask decoder.
-    
-    Returns:
-        ChangeSam: The constructed ChangeSam model.
-    """
-    sam_state_dict = load_and_verify_checkpoint(sam_checkpoint, EXPECTED_SAM_VIT_H_CHECKPOINT_HASH)
-    changesam = _build_changesam_common(
-        mask_decoder_builder=lambda: ChangeDecoderPostDF(
+        )
+    elif decoder_type == "postdf":
+        mask_decoder_builder = lambda: ChangeDecoderPostDF(
             num_multimask_outputs=3,
             transformer=TwoWayTransformer(
                 depth=2,
@@ -196,19 +230,18 @@ def build_changesam_postdf_from_sam_vit_h_checkpoint(
             transformer_dim=256,
             iou_head_depth=3,
             iou_head_hidden_dim=256,
-        ),
-        encoder_embed_dim=1280,
-        encoder_depth=32,
-        encoder_num_heads=16,
-        encoder_global_attn_indexes=[7, 15, 23, 31],
-        sam_state_dict=sam_state_dict,
-        lora_layers=lora_layers,
-        lora_r=lora_r,
-        lora_alpha=lora_alpha
-    )
-    if changesam_mask_decoder_checkpoint is not None:
-        state_dict = torch.load(changesam_mask_decoder_checkpoint)
-        changesam.mask_decoder.load_state_dict(state_dict)
+        )
     else:
-        print("Returning ChangeSAM with uninitialized fusion layer!")
+        raise ValueError(f"Unsupported decoder_type: {decoder_type}")
+
+    changesam = _build_changesam_common(
+        mask_decoder_builder=mask_decoder_builder,
+        image_encoder=image_encoder,
+        prompt_embed_dim=prompt_embed_dim,
+        image_size=image_size,
+        image_embedding_size=image_embedding_size,
+        sam_state_dict=sam_state_dict,
+    )
+
+    print("Returning ChangeSAM with uninitialized adaptation parameters!")
     return changesam

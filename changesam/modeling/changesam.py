@@ -4,7 +4,10 @@ from torch import nn
 from segment_anything.modeling import ImageEncoderViT, PromptEncoder
 from torch.nn import functional as F
 
+from mobile_sam.modeling.tiny_vit_sam import TinyViT
+
 from changesam.modeling.image_encoder_vit_lora import ImageEncoderViTLoRA
+from changesam.modeling.tiny_vit_lora import TinyViTLoRA
 from changesam.modeling.change_decoder_pre_df import ChangeDecoderPreDF
 from changesam.modeling.change_decoder_post_df import ChangeDecoderPostDF
 
@@ -20,7 +23,7 @@ class ChangeSam(nn.Module):
 
     def __init__(
         self,
-        image_encoder: Union[ImageEncoderViT, ImageEncoderViTLoRA],
+        image_encoder: Union[ImageEncoderViT, ImageEncoderViTLoRA, TinyViT, TinyViTLoRA],
         prompt_encoder: PromptEncoder,
         mask_decoder: Union[ChangeDecoderPreDF, ChangeDecoderPostDF],
         num_sparse_prompts: int = 4,
@@ -43,6 +46,8 @@ class ChangeSam(nn.Module):
         self.mask_decoder = mask_decoder
         self.num_sparse_prompts = num_sparse_prompts
         self.original_image_size = original_image_size
+
+        self.parameters_to_adapt = []
 
         # Initialize learnable sparse prompt embeddings.
         # To mimic the original prompt encoder behavior, we simulate a centered point prompt.
@@ -155,5 +160,84 @@ class ChangeSam(nn.Module):
             align_corners=False,
         )
         masks = masks[..., : self.original_image_size[0], : self.original_image_size[1]]
-        #masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
+        masks = F.interpolate(masks, self.original_image_size, mode="bilinear", align_corners=False)
         return masks
+
+    def freeze_except(self, adapt_param_names: List[str]) -> None:
+        """
+        Freezes all parameters except those whose names contain any of the substrings
+        in the provided list.
+
+        Args:
+            adapt_param_names (List[str]): List of parameter name strings that should
+                remain trainable.
+        """
+        print("freezing all but these parameters: " + ', '.join(adapt_param_names))
+
+        self.parameters_to_adapt = adapt_param_names
+
+        for name, param in self.named_parameters():
+            if any(adapt_str in name for adapt_str in adapt_param_names):
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+
+    def save_adapted_checkpoint(self, filepath: Union[str, None] = None) -> Dict[str, Any]:
+        """
+        Saves a checkpoint containing only the adapted parameters.
+
+        Args:
+            filepath (str, optional): If provided, the checkpoint will be saved to this file.
+
+        Returns:
+            A dict mapping parameter names to parameter tensors (on CPU) for all adapted parameters.
+        """
+        # Clone each parameter tensor to ensure a deep copy is made.
+        adapted_state = {
+            name: param.detach().cpu().clone()
+            for name, param in self.named_parameters()
+            if any(adapt_str in name for adapt_str in self.parameters_to_adapt)
+        }
+        if filepath is not None:
+            torch.save(adapted_state, filepath)
+        return adapted_state
+
+    def load_adapted_checkpoint(self, checkpoint: Union[str, Dict[str, Any]], strict: bool = True) -> None:
+        """
+        Loads a checkpoint containing only the adapted parameters into the model.
+
+        Args:
+            checkpoint (str or dict): Either the path to a checkpoint file or a state dict.
+            strict (bool): If True, raises an error if the checkpoint contains unexpected keys or is missing
+                        expected keys.
+
+        Raises:
+            RuntimeError: If strict is True and there is a mismatch between the adapted parameters in the model
+                        and those in the checkpoint.
+        """
+        if isinstance(checkpoint, str):
+            checkpoint = torch.load(checkpoint, map_location="cpu")
+
+        own_state = self.state_dict()
+        missing_keys = []
+        unexpected_keys = []
+
+        for name, param in checkpoint.items():
+            if name in own_state:
+                try:
+                    own_state[name].copy_(param)
+                except Exception as e:
+                    raise RuntimeError(f"Error copying parameter {name}: {e}")
+            else:
+                unexpected_keys.append(name)
+
+        # Check that every adapted parameter in the model is present in the checkpoint.
+        for name in own_state:
+            if any(adapt_str in name for adapt_str in self.parameters_to_adapt) and name not in checkpoint:
+                missing_keys.append(name)
+
+        if strict and (missing_keys or unexpected_keys):
+            raise RuntimeError(
+                f"Adapted checkpoint load failed. Missing keys: {missing_keys}, Unexpected keys: {unexpected_keys}"
+            )
+
