@@ -40,7 +40,7 @@ def get_args():
     """
     parser = argparse.ArgumentParser(description="Test ChangeSam on VL-CMU-CD dataset")
     parser.add_argument(
-        "--dataset-root",
+        "dataset_root",
         type=str,
         help="Dataset root directory",
     )
@@ -52,7 +52,7 @@ def get_args():
         help="Device",
     )
     parser.add_argument(
-        "--sam-checkpoint",
+        "sam_checkpoint",
         type=str,
         help="Path to the SAM checkpoint file",
     )
