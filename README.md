@@ -39,7 +39,7 @@ The accompanying paper presents experiments on point sampling strategies and inv
 ---
 
 ## Quick Start
-### Train ChangeSAM
+### Train ChangeSAM PostDF
 ```bash
 # download VL-CMU-CD to ./VL-CMU-CD
 gdown --id 1iQa9OAHNAhzO0tCufpgpowkHvkeUNxVG
@@ -47,13 +47,13 @@ unzip VL-CMU-CD.zip
 # download mobile-sam checkpoint to ./mobile_sam.pt
 wget https://github.com/ChaoningZhang/MobileSAM/raw/refs/heads/master/weights/mobile_sam.pt
 pip install git+https://github.com/tritolol/ChangeSAM
-changesam_train.py --dataset-root VL-CMU-CD --sam-checkpoint mobile_sam.pt
+changesam_train.py VL-CMU-CD mobile_sam.pt --decoder postdf
 ```
 
 ### Test ChangeSAM
 ```bash
 # expects checkpoint ./best_adapted_checkpoint.pt (created by changesam_train.py)
-changesam_test.py --dataset-root VL-CMU-CD --sam-checkpoint mobile_sam.pt
+changesam_test.py VL-CMU-CD mobile_sam.pt --decoder postdf
 ```
 
 ## Installation
