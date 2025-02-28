@@ -2,7 +2,7 @@
 Derived from segment_anything/modeling/mask_decoder.py
 """
 from typing import List
-from segment_anything.modeling.mask_decoder import MaskDecoder, MLP
+from segment_anything.modeling.mask_decoder import MaskDecoder
 import torch
 from torch import nn
 
@@ -45,7 +45,12 @@ class ChangeDecoderPostDF(MaskDecoder):
             iou_head_depth=iou_head_depth,
             iou_head_hidden_dim=iou_head_hidden_dim,
         )
-        self.fusion_layer = MLP(2*(self.num_multimask_outputs + 1), 2*(self.num_multimask_outputs + 1), 1, 3)
+        self.fusion_layer = nn.Sequential(nn.Conv2d(8, 8, 3, padding=1),
+                                             nn.ReLU(),
+                                             nn.Conv2d(8, 8, 3, padding=1),
+                                             nn.ReLU(),
+                                             nn.Conv2d(8, 1, 3, padding=1)
+                                             )
 
     def forward(
         self,
@@ -100,13 +105,12 @@ class ChangeDecoderPostDF(MaskDecoder):
         src_b = image_embeddings_b + dense_prompt_embeddings
 
         # Expand per-image data in batch direction to be per-mask
-        # src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
-        pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
+        pos_src = image_pe.expand((tokens.shape[0], -1, -1, -1))
 
         masks_a, _ = self.run_transformer(src_a, pos_src, tokens)
         masks_b, _ = self.run_transformer(src_b, pos_src, tokens)
 
-        input_masks = torch.cat((masks_a, masks_b), dim=1).permute((0,2,3,1))
+        input_masks = torch.cat((masks_a, masks_b), dim=1)
         fused_mask = self.fusion_layer(input_masks).squeeze(-1)
 
         return fused_mask

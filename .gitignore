@@ -2,3 +2,5 @@
 *.pth
 *.pyc
 .vscode
+
+test_*

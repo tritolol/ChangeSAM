@@ -5,7 +5,7 @@ Derived from segment_anything/build_sam.py
 from functools import partial
 import hashlib
 import io
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional,  Union
 
 import torch
 
@@ -16,8 +16,7 @@ from segment_anything.modeling import (
 from changesam.modeling.changesam import ChangeSam
 from changesam.modeling.image_encoder_vit_lora import ImageEncoderViTLoRA
 from changesam.modeling.tiny_vit_lora import TinyViTLoRA
-from changesam.modeling.change_decoder_pre_df import ChangeDecoderPreDF
-from changesam.modeling.change_decoder_post_df import ChangeDecoderPostDF
+from changesam.modeling.change_decoders import ChangeDecoderPreDF, ChangeDecoderPostDF
 
 # The actual expected SHA256 hash of the sam_vit_h_4b8939.pth file.
 EXPECTED_SAM_VIT_H_CHECKPOINT_HASH = (
@@ -117,6 +116,8 @@ def _build_changesam_common(
     image_embedding_size: int,
     image_size: int,
     prompt_embed_dim: int,
+    num_sparse_prompts: int,
+    prompt_init_strategy: str,
     sam_state_dict: Optional[Any] = None,
 ) -> ChangeSam:
 
@@ -133,6 +134,8 @@ def _build_changesam_common(
         image_encoder=image_encoder,
         prompt_encoder=prompt_encoder,
         mask_decoder=mask_decoder,
+        num_sparse_prompts=num_sparse_prompts,
+        prompt_init_strategy=prompt_init_strategy
     )
 
     if sam_state_dict is not None:
@@ -161,6 +164,8 @@ def build_changesam(
     lora_layers: List[int] | None = None,
     lora_r: int = 0,
     lora_alpha: float = 1,
+    num_sparse_prompts: int = 4,
+    prompt_init_strategy: str = "center",
 ) -> ChangeSam:
     """
     Builds a ChangeSam model with selectable image encoder and mask decoder modules.
@@ -174,6 +179,8 @@ def build_changesam(
         lora_layers (List[int] | None): List of block indices to apply LoRA adaptation.
         lora_r (int): LoRA rank.
         lora_alpha (float): LoRA scaling factor.
+        num_sparse_prompts (int): The number of prompt tokens.
+        prompt_init_strategy (str): The prompt initialization strategy.
 
     Returns:
         ChangeSam: The constructed ChangeSam model.
@@ -240,8 +247,9 @@ def build_changesam(
         prompt_embed_dim=prompt_embed_dim,
         image_size=image_size,
         image_embedding_size=image_embedding_size,
+        num_sparse_prompts=num_sparse_prompts,
+        prompt_init_strategy=prompt_init_strategy,
         sam_state_dict=sam_state_dict,
     )
 
-    print("Returning ChangeSAM with uninitialized adaptation parameters!")
     return changesam

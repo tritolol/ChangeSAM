@@ -45,7 +45,7 @@ class ChangeDecoderPreDF(MaskDecoder):
             iou_head_depth=iou_head_depth,
             iou_head_hidden_dim=iou_head_hidden_dim,
         )
-        self.fusion_layer = nn.Linear(2 * transformer_dim, transformer_dim)
+        self.fusion_layer = nn.Conv2d(2*transformer_dim, transformer_dim, 1)
 
     def forward(
         self,
@@ -95,20 +95,15 @@ class ChangeDecoderPreDF(MaskDecoder):
         )
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
 
-        # 
-        src_a = image_embeddings_a + dense_prompt_embeddings
-        src_b = image_embeddings_b + dense_prompt_embeddings
-        fusion_input = torch.cat((src_a, src_b), dim=1).permute((0, 2, 3, 1))
-        src = self.fusion_layer(fusion_input).permute((0, 3, 1, 2))
+        fusion_input = torch.cat((image_embeddings_a, image_embeddings_b), dim=1)
+        src = self.fusion_layer(fusion_input) + dense_prompt_embeddings
 
         # Expand per-image data in batch direction to be per-mask
-        # src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
-        pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
+        pos_src = image_pe.expand((tokens.shape[0], -1, -1, -1))
         b, c, h, w = src.shape
 
         # Run the transformer
         hs, src = self.transformer(src, pos_src, tokens)
-        iou_token_out = hs[:, 0, :]
         mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 
         # Upscale mask embeddings and predict masks using the mask tokens
@@ -121,9 +116,6 @@ class ChangeDecoderPreDF(MaskDecoder):
         b, c, h, w = upscaled_embedding.shape
         masks = (hyper_in @ upscaled_embedding.view(b, c, h * w)).view(b, -1, h, w)
 
-        # Generate mask quality predictions
-        # iou_pred = self.iou_prediction_head(iou_token_out)
-
         # only return the fist mask
-        return masks[:,0,:]
+        return masks[:,0,:].unsqueeze(0)
 
