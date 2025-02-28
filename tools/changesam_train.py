@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+Training script for ChangeSam on the VL-CMU-CD dataset.
+
+This script builds and trains a ChangeSam model for change detection using paired image embeddings.
+It uses GPU-based augmentation, a composite Dice and BCE loss, and LoRA-adapted image encoder and mask decoder.
+The training loop monitors performance via the F1 score on a validation split and saves the best model checkpoint.
+"""
+
 import argparse
 import torch
 import torch.nn as nn
@@ -17,9 +26,28 @@ from changesam.utils import (
 
 
 def get_args():
-    parser = argparse.ArgumentParser(
-        description="Train ChangeSam on VL-CMU-CD dataset"
-    )
+    """
+    Parses command-line arguments for training ChangeSam.
+
+    Returns:
+        argparse.Namespace: An object containing all command-line parameters.
+            - dataset_root (str): Root directory for the VL-CMU-CD dataset.
+            - batch_size (int): Batch size for training.
+            - epochs (int): Number of training epochs.
+            - lr (float): Learning rate for adaptable parameters.
+            - prompt_lr (float): Learning rate for sparse prompt embeddings.
+            - aug_flip_prob (float): Probability of image flipping during augmentation.
+            - num_tokens (int): Number of prompt tokens to tune.
+            - token_init_strategy (str): Strategy for initializing prompt embeddings.
+            - lora_r (int): LoRA rank.
+            - lora_layers (List[int]): Indices of transformer layers to apply LoRA.
+            - device (str): Device to use for training.
+            - sam_checkpoint (str): Path to the SAM checkpoint file.
+            - encoder_type (str): Type of image encoder ("sam_vit_h" or "mobile_sam_vit_t").
+            - decoder_type (str): Type of mask decoder ("predf" or "postdf").
+            - checkpoint_path (str): Path to save the best model checkpoint.
+    """
+    parser = argparse.ArgumentParser(description="Train ChangeSam on VL-CMU-CD dataset")
     parser.add_argument(
         "--dataset-root",
         type=str,
@@ -56,7 +84,7 @@ def get_args():
         type=str,
         default="center",
         choices=["center", "grid", "random", "random_embedding"],
-        help="Type of image encoder to use",
+        help="Initialization strategy for prompt embeddings",
     )
     parser.add_argument("--lora-r", type=int, default=4, help="LoRA rank")
     parser.add_argument(
@@ -105,6 +133,22 @@ def get_args():
 def validate(
     model: nn.Module, val_loader: DataLoader, device: str, gpu_aug: nn.Module
 ) -> float:
+    """
+    Evaluates the model on a validation dataset and computes the F1 score.
+
+    The validation function sets the model and GPU augmentation module to evaluation mode,
+    processes the validation data, applies the model to obtain predictions, and computes the F1 score
+    based on valid pixels (where label > 0).
+
+    Args:
+        model (nn.Module): The ChangeSam model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        device (str): The device on which evaluation is performed.
+        gpu_aug (nn.Module): GPU augmentation module (with no randomness in eval mode).
+
+    Returns:
+        float: The computed F1 score on the validation set.
+    """
     model.eval()
     gpu_aug.eval()  # Ensure augmentation is in eval mode (no randomness)
     all_preds = []
@@ -126,12 +170,26 @@ def validate(
     all_preds = torch.cat(all_preds)
     all_targets = torch.cat(all_targets)
     f1 = compute_f1_score(all_preds, all_targets)
+    # Set back to training mode.
     model.train()
     gpu_aug.train()
     return f1
 
 
 def main():
+    """
+    Main function to train the ChangeSam model.
+
+    The function performs the following steps:
+        1. Parses command-line arguments.
+        2. Sets up the device and GPU augmentation module.
+        3. Loads the VL-CMU-CD training and validation datasets.
+        4. Builds the ChangeSam model based on the provided configuration and moves it to the device.
+        5. Constructs optimizer parameter groups for the fine-tuned modules.
+        6. Trains the model for a specified number of epochs, computing loss and updating parameters.
+        7. Evaluates the model on the validation set after each epoch.
+        8. Saves the best model checkpoint based on the highest validation F1 score.
+    """
     args = get_args()
     device = args.device
 

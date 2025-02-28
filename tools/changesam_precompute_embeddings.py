@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""
+This script processes images using the Segment Anything Model (SAM) on CUDA, MPS, or CPU.
+
+It downloads the SAM checkpoint if not present, loads the model onto the specified devices,
+and computes image embeddings for all images in a given dataset. Each embedding is saved
+as a .pt file in the same folder as the corresponding image.
+"""
+
 import os
 import glob
 import argparse
@@ -16,6 +24,15 @@ from segment_anything.predictor import SamPredictor
 
 
 def parse_args():
+    """
+    Parses command-line arguments for processing images using SAM.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments, which include:
+            --cuda-devices (str): Comma-separated CUDA device IDs (or "all") to use.
+            --dataset-root (str): Path to the dataset root directory (expects an 'images' folder).
+            --checkpoint (str): Path to the SAM checkpoint file.
+    """
     parser = argparse.ArgumentParser(
         description="Process images using SAM on CUDA, MPS, or CPU."
     )
@@ -41,7 +58,15 @@ def parse_args():
 
 
 def download_checkpoint_if_needed(checkpoint):
-    """Download the checkpoint from the remote URL if it doesn't exist locally."""
+    """
+    Downloads the SAM checkpoint from a remote URL if it does not exist locally.
+
+    Args:
+        checkpoint (str): The local file path for the SAM checkpoint.
+    
+    Raises:
+        requests.HTTPError: If the download request returns a bad status code.
+    """
     if not os.path.exists(checkpoint):
         print(f"Downloading checkpoint {checkpoint}...")
         url = f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint}"
@@ -55,15 +80,22 @@ def download_checkpoint_if_needed(checkpoint):
 
 def process_images_for_device(image_list, device, checkpoint):
     """
-    Loads the SAM model onto the given device and processes all images in image_list.
-    Each image's embedding is saved in the same folder as the image, with the extension changed to .pt.
+    Loads the SAM model onto the specified device and processes all images in image_list.
+
+    For each image, the SAM predictor is used to compute the image embedding which is then saved
+    in the same folder as the image with the file extension replaced by .pt.
+
+    Args:
+        image_list (List[str]): List of image file paths to process.
+        device (str): The device identifier (e.g., "cuda:0", "mps", or "cpu") on which to load the model.
+        checkpoint (str): Path to the SAM checkpoint file.
     """
     print(f"[Device {device}] Loading SAM model from {checkpoint}...")
     sam = build_sam_vit_h(checkpoint).to(device=device)
     predictor = SamPredictor(sam)
 
     for image_path in tqdm(image_list, desc=f"Device {device}", leave=False):
-        # Compute target embedding path by replacing the extension with .pt
+        # Compute target embedding path by replacing the extension with .pt.
         target_path = os.path.splitext(image_path)[0] + ".pt"
         if os.path.exists(target_path):
             continue
@@ -81,6 +113,16 @@ def process_images_for_device(image_list, device, checkpoint):
 
 
 def main():
+    """
+    Main function to process images using the SAM model.
+
+    The function performs the following steps:
+      1. Parses command-line arguments.
+      2. Downloads the SAM checkpoint if it does not exist.
+      3. Configures the available device(s) based on CUDA, MPS, or CPU availability.
+      4. Partitions the list of images across the selected devices.
+      5. Processes the images in parallel across devices (or in the main thread if a single device is used).
+    """
     args = parse_args()
     download_checkpoint_if_needed(args.checkpoint)
 
@@ -120,13 +162,13 @@ def main():
 
     print("Using device(s):", devices)
 
-    # Partition images across devices (round-robin if more than one)
+    # Partition images across devices (round-robin if more than one).
     partitions = {device: [] for device in devices}
     for idx, image_path in enumerate(all_images):
         device = devices[idx % len(devices)]
         partitions[device].append(image_path)
 
-    # Process images in parallel (if more than one device, use a process pool)
+    # Process images in parallel (if more than one device, use a process pool).
     if len(devices) > 1:
         with ProcessPoolExecutor(max_workers=len(devices)) as executor:
             futures = []

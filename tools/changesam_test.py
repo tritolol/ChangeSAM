@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+Testing script for ChangeSam on the VL-CMU-CD dataset.
+
+This script loads a previously trained ChangeSam model (from the best adapted checkpoint)
+and evaluates its performance on a test split (here, the validation split is used as a test set).
+It applies GPU-based augmentation (with no randomness) and computes the F1 score of the predictions.
+"""
+
 import argparse
 import torch
 import torch.nn as nn
@@ -11,7 +20,24 @@ from changesam.utils import (
     GpuTripleAugmentation,
 )
 
+
 def get_args():
+    """
+    Parses command-line arguments for testing the ChangeSam model.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments, which include:
+            --dataset-root: Root directory of the VL-CMU-CD dataset.
+            --batch-size: Batch size to use during testing.
+            --device: Device to use for inference (e.g., "cuda" or "cpu").
+            --sam-checkpoint: Path to the SAM checkpoint file.
+            --encoder-type: Type of image encoder to use ("sam_vit_h" or "mobile_sam_vit_t").
+            --decoder-type: Type of mask decoder to use ("predf" or "postdf").
+            --num-tokens: Number of prompt tokens to tune.
+            --lora-r: LoRA rank.
+            --lora-layers: Indices of transformer layers to apply LoRA.
+            --adapted-checkpoint-path: Path to the best adapted checkpoint file.
+    """
     parser = argparse.ArgumentParser(description="Test ChangeSam on VL-CMU-CD dataset")
     parser.add_argument(
         "--dataset-root",
@@ -71,7 +97,22 @@ def get_args():
 
 def test(model: nn.Module, test_loader: DataLoader, device: str, gpu_aug: nn.Module) -> float:
     """
-    Evaluate the model on the test set and compute the F1 score.
+    Evaluates the ChangeSam model on the test set and computes the F1 score.
+
+    The function performs the following steps:
+      - Sets the model and GPU augmentation module to evaluation mode.
+      - Iterates over the test dataset to apply augmentation, perform forward passes,
+        and collect predictions and corresponding ground truth labels.
+      - Computes the F1 score based on valid pixels (labels > 0).
+
+    Args:
+        model (nn.Module): The ChangeSam model to evaluate.
+        test_loader (DataLoader): DataLoader for the test dataset.
+        device (str): Device used for evaluation.
+        gpu_aug (nn.Module): GPU augmentation module (configured with no randomness).
+
+    Returns:
+        float: The computed F1 score on the test set.
     """
     model.eval()
     gpu_aug.eval()  # Disable randomness in augmentation during testing.
@@ -81,7 +122,7 @@ def test(model: nn.Module, test_loader: DataLoader, device: str, gpu_aug: nn.Mod
         for batch in tqdm(test_loader, desc="Testing", leave=False):
             img_a, img_b, labels = batch
             img_a, img_b, labels = img_a.to(device), img_b.to(device), labels.to(device)
-            # Apply GPU augmentation (with flip_prob=0, it should not modify the images).
+            # Apply GPU augmentation (with flip_prob=0, images remain unchanged).
             img_a, img_b, labels = gpu_aug(img_a, img_b, labels)
             batched_input = {"images_a": img_a, "images_b": img_b}
             outputs = model.forward_with_images(batched_input)
@@ -99,6 +140,17 @@ def test(model: nn.Module, test_loader: DataLoader, device: str, gpu_aug: nn.Mod
 
 
 def main():
+    """
+    Main function for testing the ChangeSam model.
+
+    The function performs the following:
+      1. Parses command-line arguments.
+      2. Sets up the device and GPU augmentation module for testing.
+      3. Loads the VL-CMU-CD test dataset (using the validation split as test data).
+      4. Builds the ChangeSam model using the specified configuration.
+      5. Loads the best adapted checkpoint into the model.
+      6. Evaluates the model on the test dataset and prints the F1 score.
+    """
     args = get_args()
     device = args.device
 
@@ -106,7 +158,7 @@ def main():
     gpu_aug = GpuTripleAugmentation(size=1024, flip_prob=0).to(device)
     gpu_aug.eval()
 
-    # Create the test dataset. Here we use the validation split as our test split.
+    # Create the test dataset (using the validation split).
     _, test_dataset = VlCmuCdDataset.get_train_test_split(
         dataset_root=args.dataset_root, return_embeddings=False, return_images=True
     )
@@ -127,10 +179,10 @@ def main():
         lora_r=args.lora_r,
         lora_alpha=1,
         num_sparse_prompts=args.num_tokens,
-        prompt_init_strategy="none",
+        prompt_init_strategy="none",  # Set strategy to "none" for testing if desired.
     ).to(device)
 
-    # Load the best checkpoint.
+    # Load the best adapted checkpoint.
     model.load_adapted_checkpoint(args.adapted_checkpoint_path)
 
     # Evaluate the model.
