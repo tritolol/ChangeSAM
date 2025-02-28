@@ -36,6 +36,9 @@ class VlCmuCdDataset(Dataset):
         self.return_embeddings = return_embeddings
         self.return_images = return_images
 
+        if return_embeddings:
+            self.embedding_check()
+
         # Retrieve all ground truth mask paths recursively.
         gt_dir = os.path.join(dataset_root, "GTclass")
         mask_pattern = os.path.join(gt_dir, "**", "*.png")
@@ -102,7 +105,7 @@ class VlCmuCdDataset(Dataset):
             label_mask[label_mask > 1] = 2
         return label_mask
 
-    def consistency_check(self) -> None:
+    def embedding_check(self) -> None:
         """
         Checks that all image embeddings exist.
         """

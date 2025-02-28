@@ -1,11 +1,16 @@
 """
 Derived from segment_anything/build_sam.py
+
+This module provides functionality to build and configure a ChangeSam model,
+which leverages a modified SAM (Segment Anything Model) with LoRA adaptations
+for change detection tasks. It includes functions to load and verify checkpoints,
+construct image encoders with LoRA, and build ChangeSam with selectable mask decoders.
 """
 
 from functools import partial
 import hashlib
 import io
-from typing import Any, Callable, List, Optional,  Union
+from typing import Any, Callable, List, Optional, Union
 
 import torch
 
@@ -32,8 +37,11 @@ def load_and_verify_checkpoint(
     filepath: str, expected_hash: str, hash_algo: str = "sha256"
 ) -> Any:
     """
-    Loads the checkpoint file into memory, computes its hash, verifies it,
-    and then loads the checkpoint as a torch state dict.
+    Loads a checkpoint file, verifies its integrity via hash comparison, and returns the state dict.
+
+    This function reads the checkpoint file as bytes, computes its hash using the specified
+    algorithm, and compares it against the expected hash. If the hashes match, it loads the
+    checkpoint via torch.load; otherwise, it raises a ValueError.
 
     Args:
         filepath (str): Path to the checkpoint file.
@@ -41,7 +49,7 @@ def load_and_verify_checkpoint(
         hash_algo (str): The hashing algorithm to use (default is 'sha256').
 
     Returns:
-        The checkpoint loaded via torch.load if the hash matches.
+        Any: The checkpoint loaded via torch.load (typically a state dict).
 
     Raises:
         ValueError: If the computed hash does not match the expected hash.
@@ -65,6 +73,17 @@ def _build_image_encoder_sam_vit_h_lora(
     lora_r: int = 0,
     lora_alpha: float = 1,
 ) -> ImageEncoderViTLoRA:
+    """
+    Constructs an ImageEncoderViTLoRA model configured for SAM ViT-H.
+
+    Args:
+        lora_layers (List[int] | None): Optional list of transformer layer indices to apply LoRA adaptation.
+        lora_r (int): LoRA rank.
+        lora_alpha (float): LoRA scaling factor.
+
+    Returns:
+        ImageEncoderViTLoRA: An instance of ImageEncoderViTLoRA configured for SAM ViT-H.
+    """
     return ImageEncoderViTLoRA(
         depth=32,
         embed_dim=1280,
@@ -89,6 +108,17 @@ def _build_image_encoder_mobile_sam_vit_t_lora(
     lora_r: int = 0,
     lora_alpha: float = 1,
 ) -> TinyViTLoRA:
+    """
+    Constructs a TinyViTLoRA model configured for Mobile SAM ViT-T.
+
+    Args:
+        lora_layers (List[int] | None): Optional list of transformer layer indices to apply LoRA adaptation.
+        lora_r (int): LoRA rank.
+        lora_alpha (float): LoRA scaling factor.
+
+    Returns:
+        TinyViTLoRA: An instance of TinyViTLoRA configured for Mobile SAM ViT-T.
+    """
     return TinyViTLoRA(
         img_size=1024,
         in_chans=3,
@@ -120,7 +150,30 @@ def _build_changesam_common(
     prompt_init_strategy: str,
     sam_state_dict: Optional[Any] = None,
 ) -> ChangeSam:
+    """
+    Constructs a ChangeSam model with the specified image encoder, prompt encoder, and mask decoder.
 
+    This function creates the prompt encoder, builds the mask decoder using the provided builder function,
+    and instantiates a ChangeSam model. If a SAM state dict is provided, it loads the checkpoint into the
+    model, verifies the keys, and freezes all parameters except those corresponding to the missing keys.
+
+    Args:
+        mask_decoder_builder (Callable[[], Union[ChangeDecoderPreDF, ChangeDecoderPostDF]]):
+            A callable that returns an instance of the desired mask decoder.
+        image_encoder (Union[ImageEncoderViTLoRA, TinyViTLoRA]): The image encoder model instance.
+        image_embedding_size (int): The size of the image embedding.
+        image_size (int): The spatial size of the input images.
+        prompt_embed_dim (int): The dimension of the prompt embeddings.
+        num_sparse_prompts (int): The number of sparse prompt tokens.
+        prompt_init_strategy (str): The strategy for initializing prompt embeddings.
+        sam_state_dict (Optional[Any]): Optional SAM state dict for loading pretrained weights.
+
+    Returns:
+        ChangeSam: The constructed ChangeSam model.
+    
+    Raises:
+        ValueError: If the loaded SAM state dict does not contain the expected keys.
+    """
     prompt_encoder = PromptEncoder(
         embed_dim=prompt_embed_dim,
         image_embedding_size=(image_embedding_size, image_embedding_size),
@@ -168,27 +221,34 @@ def build_changesam(
     prompt_init_strategy: str = "center",
 ) -> ChangeSam:
     """
-    Builds a ChangeSam model with selectable image encoder and mask decoder modules.
+    Builds and returns a ChangeSam model with the specified configuration.
+
+    This function selects an image encoder based on the provided encoder type (either SAM ViT-H or Mobile SAM ViT-T),
+    verifies the corresponding SAM checkpoint, and builds a mask decoder based on the decoder type.
+    It then constructs a ChangeSam model using common configuration parameters.
 
     Args:
-        sam_checkpoint (str): Path to the SAM ViT-H checkpoint.
-        encoder_type (str): Which image encoder to use. Either "sam_vit_h" (for ImageEncoderViTLoRA)
-            or "mobile_sam_vit_t" (for TinyViTLoRA).
-        decoder_type (str): Which mask decoder to use. Either "predf" (for ChangeDecoderPreDF)
-            or "postdf" (for ChangeDecoderPostDF).
-        lora_layers (List[int] | None): List of block indices to apply LoRA adaptation.
-        lora_r (int): LoRA rank.
-        lora_alpha (float): LoRA scaling factor.
-        num_sparse_prompts (int): The number of prompt tokens.
-        prompt_init_strategy (str): The prompt initialization strategy.
+        sam_checkpoint (str): Path to the SAM checkpoint file.
+        encoder_type (str): Which image encoder to use. Options are "sam_vit_h" (for ImageEncoderViTLoRA)
+            or "mobile_sam_vit_t" (for TinyViTLoRA). Default is "sam_vit_h".
+        decoder_type (str): Which mask decoder to use. Options are "predf" (for ChangeDecoderPreDF)
+            or "postdf" (for ChangeDecoderPostDF). Default is "predf".
+        lora_layers (List[int] | None): List of transformer layer indices to apply LoRA adaptation. Default is None.
+        lora_r (int): LoRA rank. Default is 0.
+        lora_alpha (float): LoRA scaling factor. Default is 1.
+        num_sparse_prompts (int): Number of sparse prompt tokens. Default is 4.
+        prompt_init_strategy (str): Strategy for initializing prompt embeddings (e.g., "center", "grid", "random", "random_embedding").
+            Default is "center".
 
     Returns:
         ChangeSam: The constructed ChangeSam model.
+    
+    Raises:
+        ValueError: If an unsupported encoder_type or decoder_type is provided.
     """
-
-    # Select the image encoder
+    # Select the image encoder.
     if encoder_type == "sam_vit_h":
-        # Load and verify the SAM checkpoint
+        # Load and verify the SAM checkpoint for SAM ViT-H.
         sam_state_dict = load_and_verify_checkpoint(
             sam_checkpoint, EXPECTED_SAM_VIT_H_CHECKPOINT_HASH
         )
@@ -196,7 +256,7 @@ def build_changesam(
             lora_layers=lora_layers, lora_r=lora_r, lora_alpha=lora_alpha
         )
     elif encoder_type == "mobile_sam_vit_t":
-        # Load and verify the SAM checkpoint
+        # Load and verify the SAM checkpoint for Mobile SAM ViT-T.
         sam_state_dict = load_and_verify_checkpoint(
             sam_checkpoint, EXPECTED_MOBILESAM_VIT_TCHECKPOINT_HASH
         )
@@ -206,12 +266,12 @@ def build_changesam(
     else:
         raise ValueError(f"Unsupported encoder_type: {encoder_type}")
 
-    # Common configuration parameters
+    # Common configuration parameters.
     image_size = 1024
     image_embedding_size = 64
     prompt_embed_dim = 256
 
-    # Select the mask decoder builder
+    # Select the mask decoder builder.
     if decoder_type == "predf":
         mask_decoder_builder = lambda: ChangeDecoderPreDF(
             num_multimask_outputs=3,
