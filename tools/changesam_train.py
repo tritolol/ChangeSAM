@@ -51,7 +51,6 @@ def get_args():
     parser.add_argument(
         "--dataset-root",
         type=str,
-        default="/path/to/VL-CMU-CD",
         help="Dataset root directory",
     )
     parser.add_argument(
@@ -103,8 +102,7 @@ def get_args():
     parser.add_argument(
         "--sam-checkpoint",
         type=str,
-        default="sam_vit_h_4b8939.pth",
-        help="Path to the SAM checkpoint file",
+        help="Path to the SAM/MobileSAM checkpoint file",
     )
     parser.add_argument(
         "--encoder-type",
