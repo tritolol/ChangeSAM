@@ -6,11 +6,11 @@
 ChangeSAM adapts the powerful [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) for the specialized task of street scene image change detection. A light-weight fusion layer is used to fuse the bi-temporal information. Prompts are replaced with a learnt "change prompt". Low-Rank Adaptation (LoRA) is used to adapt the image encoder. The heavy SAM image encoder is replaced with MobileSAM to enable ChangeSAM for use on mobile platforms such as autonomous cars. The figures below show the two variants of ChangeSAM.
 
 <figure style="display: inline-block; margin: 10px; text-align: center;">
-  <img src="assets/predf.png" alt="Image 1" style="width: 35%;">
+  <img src="assets/predf.png" alt="PreDF" style="width: 30%;">
   <figcaption>ChangeSAM Pre Decoder Fusion (PreDF)</figcaption>
 </figure>
 <figure style="display: inline-block; margin: 10px; text-align: center;">
-  <img src="assets/postdf.png" alt="Image 2" style="width: 35%;">
+  <img src="assets/postdf.png" alt="PostDF" style="width: 30%;">
   <figcaption>ChangeSAM Post Decoder Fusion (PostDF)</figcaption>
 </figure>
 
