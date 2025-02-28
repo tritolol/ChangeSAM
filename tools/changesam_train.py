@@ -107,7 +107,7 @@ def get_args():
     parser.add_argument(
         "--encoder-type",
         type=str,
-        default="sam_vit_h",
+        default="mobile_sam_vit_t",
         choices=["sam_vit_h", "mobile_sam_vit_t"],
         help="Type of image encoder to use",
     )

@@ -6,11 +6,11 @@
 ChangeSAM adapts the powerful [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) for the specialized task of street scene image change detection. A light-weight fusion layer is used to fuse the bi-temporal information. Prompts are replaced with a learnt "change prompt". Low-Rank Adaptation (LoRA) is used to adapt the image encoder. The heavy SAM image encoder is replaced with MobileSAM to enable ChangeSAM for use on mobile platforms such as autonomous cars. The figures below show the two variants of ChangeSAM.
 
 <figure style="display: inline-block; margin: 10px; text-align: center;">
-  <img src="assets/predf.png" alt="Image 1" style="width: 50%;">
+  <img src="assets/predf.png" alt="Image 1" style="width: 40%;">
   <figcaption>ChangeSAM Pre Decoder Fusion (PreDF)</figcaption>
 </figure>
 <figure style="display: inline-block; margin: 10px; text-align: center;">
-  <img src="assets/postdf.png" alt="Image 2" style="width: 50%;">
+  <img src="assets/postdf.png" alt="Image 2" style="width: 40%;">
   <figcaption>ChangeSAM Post Decoder Fusion (PostDF)</figcaption>
 </figure>
 
@@ -22,9 +22,10 @@ The accompanying paper presents experiments on point sampling strategies and inv
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Installation](#installation)
-- [Building the Dataset](#building-the-dataset)
-- [Model Checkpoints](#model-checkpoints)
+- [Dataset](#dataset)
+- [Model Initialization](#model-initialization)
 - [Tools](#tools)
 - [License](#license)
 - [Citing ChangeSAM](#citing-changesam)
@@ -32,8 +33,25 @@ The accompanying paper presents experiments on point sampling strategies and inv
 
 ---
 
-## Installation
+## Quick Start
+### Train ChangeSAM
+```bash
+# download VL-CMU-CD to ./VL-CMU-CD
+gdown --id 1iQa9OAHNAhzO0tCufpgpowkHvkeUNxVG
+unzip VL-CMU-CD.zip
+# download mobile-sam checkpoint to ./mobile_sam.pt
+wget https://github.com/ChaoningZhang/MobileSAM/raw/refs/heads/master/weights/mobile_sam.pt
+pip install git+https://github.com/tritolol/ChangeSAM
+changesam_train.py --dataset-root VL-CMU-CD --sam-checkpoint mobile_sam.pt
+```
 
+### Test ChangeSAM
+```bash
+# expects checkpoint ./best_adapted_checkpoint.pt (created by changesam_train.py)
+changesam_test.py --dataset-root VL-CMU-CD --sam-checkpoint mobile_sam.pt
+```
+
+## Installation
 ChangeSAM requires:
 - **Python**: version `>=3.10.8`
 - **PyTorch**: version `>=2.0.1`
@@ -65,11 +83,6 @@ During training, ChangeSAM checkpoints containing weights for the tuned prompt t
 ## Tools
 The repository provides several command-line tools located in the `tools/` directory. These scripts are installed to your PATH during setup and can be configured via command-line arguments (use `-h` for help).
 
-- Embedding Precomputation:
-
-    `changesam_precompute_embeddings.py`
-
-    Description: Precompute image embeddings using the SAM image encoder across one or multiple supported pytorch devices. These embeddings are not required but can speed up training significantly if neither augmentation nor image encoder adaptation is desired.
 - Training:
 
     `changesam_train.py`
@@ -80,6 +93,11 @@ The repository provides several command-line tools located in the `tools/` direc
     `changesam_test.py`
 
     Description: Evaluate a trained model.
+- Embedding Precomputation:
+
+    `changesam_precompute_embeddings.py`
+
+    Description: Precompute image embeddings using the SAM image encoder across one or multiple supported pytorch devices. These embeddings are not required but can speed up training significantly if neither augmentation nor image encoder adaptation is desired.
 
 Usage example to see all available options for a tool:
 ```bash

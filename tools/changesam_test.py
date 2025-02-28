@@ -42,7 +42,6 @@ def get_args():
     parser.add_argument(
         "--dataset-root",
         type=str,
-        default="/path/to/VL-CMU-CD",
         help="Dataset root directory",
     )
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for testing")
@@ -55,13 +54,12 @@ def get_args():
     parser.add_argument(
         "--sam-checkpoint",
         type=str,
-        default="sam_vit_h_4b8939.pth",
         help="Path to the SAM checkpoint file",
     )
     parser.add_argument(
         "--encoder-type",
         type=str,
-        default="sam_vit_h",
+        default="mobile_sam_vit_t",
         choices=["sam_vit_h", "mobile_sam_vit_t"],
         help="Type of image encoder to use",
     )

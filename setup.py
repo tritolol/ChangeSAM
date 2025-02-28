@@ -8,6 +8,7 @@ setup(
         "pillow>=11.1.0",
         "requests>=2.32.3",
         "timm",
+        "gdown",
         "segment_anything @ git+https://github.com/facebookresearch/segment-anything.git"
     ],
     packages=find_packages(),
