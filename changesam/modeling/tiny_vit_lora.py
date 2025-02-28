@@ -1,3 +1,7 @@
+"""
+Derived from mobile_sam/modeling/tiny_vit_sam.py
+"""
+
 import itertools
 import torch
 import torch.nn as nn

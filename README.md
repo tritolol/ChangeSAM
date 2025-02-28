@@ -21,7 +21,7 @@ ChangeSAM adapts the powerful [Segment Anything Model (SAM)](https://github.com/
 
 Only purple modules are adapted during training.
 
-The accompanying paper presents experiments on point sampling strategies and investigates the effect of varying the number of sampling points per roof instance.
+The accompanying paper presents various experiments and results.
 
 ---
 
