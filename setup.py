@@ -11,7 +11,7 @@ setup(
         "segment_anything @ git+https://github.com/facebookresearch/segment-anything.git"
     ],
     packages=find_packages(),
-    scripts=["tools/changesam_train.py"
+    scripts=["tools/changesam_train.py",
              "tools/changesam_test.py",
              "tools/changesam_precompute_embeddings.py"]
 )
