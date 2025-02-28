@@ -8,11 +8,11 @@ ChangeSAM adapts the powerful [Segment Anything Model (SAM)](https://github.com/
 <table>
   <tr>
     <td align="center">
-      <img src="assets/predf.png" alt="PreDF" width="200"><br>
+      <img src="assets/predf.png" alt="PreDF" width="300"><br>
       <sub>ChangeSAM Pre Decoder Fusion (PreDF)</sub>
     </td>
     <td align="center">
-      <img src="assets/postdf.png" alt="PostDF" width="200"><br>
+      <img src="assets/postdf.png" alt="PostDF" width="300"><br>
       <sub>ChangeSAM Post Decoder Fusion (PostDF)</sub>
     </td>
   </tr>
