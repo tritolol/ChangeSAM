@@ -1,7 +1,7 @@
 
 # ChangeSAM: Adapting the Segment Anything Model to Street Scene Image Change Detection
 
-**International Conference on Intelligent Transportation Systems 2024 Paper**
+**[International Conference on Intelligent Transportation Systems 2024 Paper](https://ieeexplore.ieee.org/document/10920237)**
 
 ChangeSAM adapts the powerful [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) for the specialized task of street scene image change detection. A light-weight fusion layer is used to fuse the bi-temporal information. Prompts are replaced with a learnt "change prompt". Low-Rank Adaptation (LoRA) is used to adapt the image encoder. The heavy SAM image encoder is replaced with MobileSAM to enable ChangeSAM for use on mobile platforms such as autonomous cars. The figures below show the two variants of ChangeSAM.
 
