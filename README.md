@@ -159,14 +159,15 @@ year={2023}
     </summary>
 
 ```bibtex
-@misc{hu2021loralowrankadaptationlarge,
-title={LoRA: Low-Rank Adaptation of Large Language Models}, 
-author={Edward J. Hu and Yelong Shen and Phillip Wallis and Zeyuan Allen-Zhu and Yuanzhi Li and Shean Wang and Lu Wang and Weizhu Chen},
-year={2021},
-eprint={2106.09685},
-archivePrefix={arXiv},
-primaryClass={cs.CL},
-url={https://arxiv.org/abs/2106.09685}, 
-}
+@INPROCEEDINGS{10920237,
+  author={Bauer, Adrian and Krabbe, Jan-Christoph and Kummert, Anton},
+  booktitle={2024 IEEE 27th International Conference on Intelligent Transportation Systems (ITSC)}, 
+  title={ChangeSAM: Adapting the Segment Anything Model to Street Scene Image Change Detection}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={1672-1677},
+  keywords={Adaptation models;Image segmentation;Accuracy;Foundation models;Computational modeling;Predictive models;Computational efficiency;Decoding;Vehicle dynamics;Tuning;Foundation Model Adaptation;Change Detection;ChangeSAM;SAM;Segment Anything Model},
+  doi={10.1109/ITSC58415.2024.10920237}}
 ```
 </details>
